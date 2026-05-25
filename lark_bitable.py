@@ -79,6 +79,7 @@ def get_or_create_bitable():
     """获取或创建多维表，返回 (base_token, table_id)"""
     bt, tid = load_config()
     if bt and tid:
+        ensure_fields(bt, tid)
         return bt, tid
 
     print("[飞书] 首次运行，创建多维表...")
@@ -86,6 +87,39 @@ def get_or_create_bitable():
     tid = create_table(bt)
     save_config(bt, tid)
     return bt, tid
+
+
+def ensure_fields(base_token, table_id):
+    """确保多维表中存在 FIELDS 定义的所有字段，缺失则自动创建"""
+    existing_names = _list_field_names(base_token, table_id)
+    for f in FIELDS:
+        fn = f["field_name"]
+        if fn not in existing_names:
+            print(f"[飞书] 补充创建字段: {fn}")
+            _create_field(base_token, table_id, fn, f["type"])
+
+
+def _list_field_names(base_token, table_id):
+    """返回多维表中已有字段名集合"""
+    output = _run_lark(
+        "base", "+field-list",
+        "--base-token", base_token,
+        "--table-id", table_id
+    )
+    data = json.loads(output)
+    fields = data.get("data", {}).get("fields", [])
+    return {f.get("name", "") for f in fields}
+
+
+def _create_field(base_token, table_id, field_name, field_type):
+    """在已有表中创建新字段"""
+    payload = json.dumps({"field_name": field_name, "type": field_type}, ensure_ascii=False)
+    _run_lark(
+        "base", "+field-create",
+        "--base-token", base_token,
+        "--table-id", table_id,
+        "--json", payload
+    )
 
 
 def _get_field_id(base_token, table_id, field_name):
